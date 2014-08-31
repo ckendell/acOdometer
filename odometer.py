@@ -4,6 +4,13 @@ import acsys
 import time
 sys.path.insert(len(sys.path), 'apps/python/odometer/third_party')
 from sim_info import info
+import sqlite3
+
+conn = sqlite3.connect('apps/python/odometer/database/odometer.db')
+c = conn.cursor()
+c.execute("CREATE TABLE IF NOT EXISTS session(date text, track text, car text)")
+c.execute("CREATE TABLE IF NOT EXISTS totals(distance real, fuel real)")
+conn.commit()
 
 # Hardcoded for now. However, data is available in /content/tracks/<name>/ui/ui_track.json
 tracklength = {'imola': 4.909,
@@ -29,7 +36,7 @@ in_tank=0   # Hackity hack
 fuel=0
 
 def acMain(ac_version):
-    global appWindow, trackname, tracklength, l_lapcount, l_distance, l_fuel
+    global appWindow, trackname, tracklength, l_lapcount, l_distance, l_fuel, conn, c
 
     appWindow = ac.newApp("acOdometer")
     ac.setSize(appWindow, 142, 142)
@@ -42,6 +49,9 @@ def acMain(ac_version):
     ac.setPosition(l_fuel, 3, 60)
 
     trackname = ac.getTrackName(0)
+    carname = ac.getCarName(0)
+    t = int(time.time())
+    c.execute("INSERT INTO session('date', 'track', 'car') values (?, ?, ?)", (t, trackname, carname)) # Commited atomically at end of session
     ac.log("*************************** NEW SESSION\n********* " + trackname)
     ac.log("acOdometer loaded, racing {} which has {:.3f} miles per lap".format(trackname, tracklength[trackname]))
     ac.console("acOdometer loaded, racing {} which has {:.3f} kilometers per lap.".format(trackname, tracklength[trackname]))
@@ -72,7 +82,11 @@ def acUpdate(deltaT):
         ac.setText(l_distance, "Kilometers: {:.3f}".format(distance))
 
 def acShutdown():
-    global distance
+    global distance, fuel, c, conn
     ac.log("Drove {:.3f} kilometers using {:.3f} liters of fuel.".format(distance, fuel))
     ac.log("*************************** END SESSION")
+    c.execute("INSERT INTO totals('distance', 'fuel') VALUES (?, ?)", (distance, round(fuel, 3)))
+    conn.commit()
+    conn.close()
+    ac.log("database closed")
 
